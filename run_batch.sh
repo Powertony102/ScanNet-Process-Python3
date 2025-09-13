@@ -4,8 +4,8 @@
 # This script processes .sens files from eval_list.txt and exports all data types
 
 # Configuration
-DATASET_ROOT="/path/to/your/scannet/dataset"  # Change this to your dataset path
-OUTPUT_DIR="./processed_data"  # Change this to your desired output directory
+DATASET_ROOT="../OpenDataLab___ScanNet_v2/"  # Change this to your dataset path
+OUTPUT_DIR="../processed_scannet"  # Change this to your desired output directory
 EVAL_LIST="eval_list.txt"  # Path to eval_list.txt file
 
 # Create output directory
