@@ -24,18 +24,63 @@ def setup_logging(log_file):
         ]
     )
 
-def find_sens_files(dataset_root):
-    """Find all .sens files in the dataset"""
+def load_eval_list(eval_list_file):
+    """Load scene names from eval_list.txt file"""
+    scene_names = []
+    
+    if not os.path.exists(eval_list_file):
+        logging.warning(f"Eval list file not found: {eval_list_file}")
+        return scene_names
+    
+    try:
+        with open(eval_list_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                scene_name = line.strip()
+                if scene_name:  # Skip empty lines
+                    scene_names.append(scene_name)
+        
+        logging.info(f"Loaded {len(scene_names)} scenes from {eval_list_file}")
+        return scene_names
+    except Exception as e:
+        logging.error(f"Error reading eval list file: {str(e)}")
+        return []
+
+def find_sens_files(dataset_root, eval_list_file=None):
+    """Find .sens files in the dataset, optionally filtered by eval_list"""
     sens_files = []
     
     # Look for .sens files in the scans directory
     scans_dir = os.path.join(dataset_root, 'raw', 'scans')
-    if os.path.exists(scans_dir):
+    if not os.path.exists(scans_dir):
+        logging.warning(f"Scans directory not found: {scans_dir}")
+        return sens_files
+    
+    if eval_list_file:
+        # Load scene names from eval list
+        eval_scenes = load_eval_list(eval_list_file)
+        if not eval_scenes:
+            logging.warning("No scenes found in eval list, processing all scenes")
+            eval_scenes = None
+    else:
+        eval_scenes = None
+    
+    if eval_scenes:
+        # Process only scenes in the eval list
+        for scene_name in eval_scenes:
+            scene_dir = os.path.join(scans_dir, scene_name)
+            sens_file = os.path.join(scene_dir, f"{scene_name}.sens")
+            
+            if os.path.exists(sens_file):
+                sens_files.append(sens_file)
+            else:
+                logging.warning(f"Sens file not found for scene {scene_name}: {sens_file}")
+        
+        logging.info(f"Found {len(sens_files)} .sens files from eval list")
+    else:
+        # Process all .sens files
         pattern = os.path.join(scans_dir, '*', '*.sens')
         sens_files = glob.glob(pattern)
         logging.info(f"Found {len(sens_files)} .sens files in {scans_dir}")
-    else:
-        logging.warning(f"Scans directory not found: {scans_dir}")
     
     return sorted(sens_files)
 
@@ -90,6 +135,8 @@ def main():
                        help='Output directory for processed data')
     parser.add_argument('--reader_script', default='reader.py',
                        help='Path to the reader.py script (default: reader.py)')
+    parser.add_argument('--eval_list', default='eval_list.txt',
+                       help='Path to eval_list.txt file (default: eval_list.txt)')
     parser.add_argument('--start_from', type=int, default=0,
                        help='Start processing from this file index (for resuming)')
     parser.add_argument('--max_files', type=int, default=None,
@@ -106,9 +153,10 @@ def main():
     logging.info(f"Dataset root: {args.dataset_root}")
     logging.info(f"Output directory: {args.output_dir}")
     logging.info(f"Reader script: {args.reader_script}")
+    logging.info(f"Eval list: {args.eval_list}")
     
-    # Find all .sens files
-    sens_files = find_sens_files(args.dataset_root)
+    # Find .sens files (optionally filtered by eval_list)
+    sens_files = find_sens_files(args.dataset_root, args.eval_list)
     
     if not sens_files:
         logging.error("No .sens files found!")
