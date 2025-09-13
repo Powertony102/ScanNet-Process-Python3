@@ -6,10 +6,15 @@ Randomly sample 50 scenes from ScanNet dataset and output to eval_list
 import re
 import random
 import os
+import glob
 
-def extract_scene_names_from_structure(structure_file):
+def extract_scene_names_from_structure(structure_file, data_source='all'):
     """
-    Extract all scene names from the structure.txt file
+    Extract scene names from the structure.txt file
+    
+    Args:
+        structure_file: Path to structure.txt file
+        data_source: 'raw', 'processed', or 'all' - which data source to sample from
     """
     scene_names = []
     
@@ -22,9 +27,48 @@ def extract_scene_names_from_structure(structure_file):
                 match = re.search(r'scene(\d+_\d+)', line)
                 if match:
                     scene_name = 'scene' + match.group(1)
-                    scene_names.append(scene_name)
+                    
+                    # Filter by data source if specified
+                    if data_source == 'all':
+                        scene_names.append(scene_name)
+                    elif data_source == 'raw' and 'raw' in line:
+                        scene_names.append(scene_name)
+                    elif data_source == 'processed' and 'raw' not in line:
+                        scene_names.append(scene_name)
     
     return scene_names
+
+def scan_scenes_from_filesystem(dataset_root, data_source='all'):
+    """
+    Scan for scenes directly from the file system
+    
+    Args:
+        dataset_root: Root directory of the ScanNet dataset
+        data_source: 'raw', 'processed', or 'all' - which data source to scan
+    """
+    scene_names = []
+    
+    if data_source in ['all', 'raw']:
+        # Scan raw/scans directory
+        raw_scans_dir = os.path.join(dataset_root, 'raw', 'scans')
+        if os.path.exists(raw_scans_dir):
+            for item in os.listdir(raw_scans_dir):
+                if os.path.isdir(os.path.join(raw_scans_dir, item)) and item.startswith('scene'):
+                    scene_names.append(item)
+    
+    if data_source in ['all', 'processed']:
+        # Scan for other processed data directories
+        # Look for directories that might contain processed scene data
+        for root, dirs, files in os.walk(dataset_root):
+            # Skip raw directory if we're looking for processed data
+            if data_source == 'processed' and 'raw' in root:
+                continue
+            
+            for dir_name in dirs:
+                if dir_name.startswith('scene') and dir_name not in scene_names:
+                    scene_names.append(dir_name)
+    
+    return sorted(list(set(scene_names)))  # Remove duplicates and sort
 
 def random_sample_scenes(scene_names, num_samples=50):
     """
@@ -47,29 +91,58 @@ def save_to_eval_list(sampled_scenes, output_file='eval_list.txt'):
     print(f"Successfully saved {len(sampled_scenes)} scenes to {output_file}")
 
 def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Randomly sample scenes from ScanNet dataset')
+    parser.add_argument('--dataset_root', default='.',
+                       help='Root directory of the ScanNet dataset (default: current directory)')
+    parser.add_argument('--structure_file', default='structure.txt',
+                       help='Path to structure.txt file (default: structure.txt)')
+    parser.add_argument('--data_source', choices=['raw', 'processed', 'all'], default='all',
+                       help='Data source to sample from: raw, processed, or all (default: all)')
+    parser.add_argument('--num_samples', type=int, default=50,
+                       help='Number of scenes to sample (default: 50)')
+    parser.add_argument('--use_filesystem', action='store_true',
+                       help='Scan filesystem directly instead of using structure.txt')
+    parser.add_argument('--output_file', default='eval_list.txt',
+                       help='Output file name (default: eval_list.txt)')
+    parser.add_argument('--seed', type=int, default=42,
+                       help='Random seed for reproducibility (default: 42)')
+    
+    args = parser.parse_args()
+    
     # Set random seed for reproducibility
-    random.seed(42)
+    random.seed(args.seed)
     
-    # Path to structure.txt file
-    structure_file = 'structure.txt'
+    print(f"Sampling {args.num_samples} scenes from {args.data_source} data source")
     
-    if not os.path.exists(structure_file):
-        print(f"Error: {structure_file} not found!")
-        return
+    if args.use_filesystem:
+        print(f"Scanning filesystem in {args.dataset_root}...")
+        scene_names = scan_scenes_from_filesystem(args.dataset_root, args.data_source)
+    else:
+        if not os.path.exists(args.structure_file):
+            print(f"Error: {args.structure_file} not found!")
+            print("Use --use_filesystem to scan the filesystem directly")
+            return
+        
+        print(f"Extracting scene names from {args.structure_file}...")
+        scene_names = extract_scene_names_from_structure(args.structure_file, args.data_source)
     
-    print("Extracting scene names from structure.txt...")
-    scene_names = extract_scene_names_from_structure(structure_file)
     print(f"Found {len(scene_names)} total scenes")
     
-    print("Randomly sampling 50 scenes...")
-    sampled_scenes = random_sample_scenes(scene_names, 50)
+    if len(scene_names) == 0:
+        print("No scenes found! Please check your dataset path and data source.")
+        return
+    
+    print(f"Randomly sampling {args.num_samples} scenes...")
+    sampled_scenes = random_sample_scenes(scene_names, args.num_samples)
     
     print("Sampled scenes:")
     for i, scene in enumerate(sampled_scenes, 1):
         print(f"{i:2d}. {scene}")
     
-    print("\nSaving to eval_list.txt...")
-    save_to_eval_list(sampled_scenes)
+    print(f"\nSaving to {args.output_file}...")
+    save_to_eval_list(sampled_scenes, args.output_file)
     
     print("\nDone!")
 
