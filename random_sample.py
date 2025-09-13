@@ -38,13 +38,14 @@ def extract_scene_names_from_structure(structure_file, data_source='all'):
     
     return scene_names
 
-def scan_scenes_from_filesystem(dataset_root, data_source='all'):
+def scan_scenes_from_filesystem(dataset_root, data_source='all', verify_sens=True):
     """
     Scan for scenes directly from the file system
     
     Args:
         dataset_root: Root directory of the ScanNet dataset
         data_source: 'raw', 'processed', or 'all' - which data source to scan
+        verify_sens: If True, verify that .sens file exists for each scene
     """
     scene_names = []
     
@@ -54,7 +55,15 @@ def scan_scenes_from_filesystem(dataset_root, data_source='all'):
         if os.path.exists(raw_scans_dir):
             for item in os.listdir(raw_scans_dir):
                 if os.path.isdir(os.path.join(raw_scans_dir, item)) and item.startswith('scene'):
-                    scene_names.append(item)
+                    # Verify .sens file exists if requested
+                    if verify_sens:
+                        sens_file = os.path.join(raw_scans_dir, item, f"{item}.sens")
+                        if os.path.exists(sens_file):
+                            scene_names.append(item)
+                        else:
+                            print(f"Warning: .sens file not found for {item}, skipping...")
+                    else:
+                        scene_names.append(item)
     
     if data_source in ['all', 'processed']:
         # Scan for other processed data directories
@@ -69,6 +78,29 @@ def scan_scenes_from_filesystem(dataset_root, data_source='all'):
                     scene_names.append(dir_name)
     
     return sorted(list(set(scene_names)))  # Remove duplicates and sort
+
+def verify_scenes_exist(scene_names, dataset_root):
+    """
+    Verify that .sens files exist for the given scenes
+    
+    Args:
+        scene_names: List of scene names to verify
+        dataset_root: Root directory of the ScanNet dataset
+    
+    Returns:
+        List of scene names that have valid .sens files
+    """
+    valid_scenes = []
+    raw_scans_dir = os.path.join(dataset_root, 'raw', 'scans')
+    
+    for scene_name in scene_names:
+        sens_file = os.path.join(raw_scans_dir, scene_name, f"{scene_name}.sens")
+        if os.path.exists(sens_file):
+            valid_scenes.append(scene_name)
+        else:
+            print(f"Warning: .sens file not found for {scene_name}, skipping...")
+    
+    return valid_scenes
 
 def random_sample_scenes(scene_names, num_samples=50):
     """
@@ -108,6 +140,8 @@ def main():
                        help='Output file name (default: eval_list.txt)')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed for reproducibility (default: 42)')
+    parser.add_argument('--verify_sens', action='store_true',
+                       help='Verify that .sens files exist for sampled scenes')
     
     args = parser.parse_args()
     
@@ -133,6 +167,16 @@ def main():
     if len(scene_names) == 0:
         print("No scenes found! Please check your dataset path and data source.")
         return
+    
+    # Verify scenes exist if requested
+    if args.verify_sens:
+        print("Verifying that .sens files exist for all scenes...")
+        scene_names = verify_scenes_exist(scene_names, args.dataset_root)
+        print(f"Found {len(scene_names)} scenes with valid .sens files")
+        
+        if len(scene_names) == 0:
+            print("No valid scenes found! Please check your dataset.")
+            return
     
     print(f"Randomly sampling {args.num_samples} scenes...")
     sampled_scenes = random_sample_scenes(scene_names, args.num_samples)
